@@ -1,0 +1,49 @@
+FROM composer:2 AS vendor
+
+WORKDIR /app
+
+COPY composer.json composer.lock* ./
+RUN composer install \
+    --no-dev \
+    --prefer-dist \
+    --no-interaction \
+    --no-progress \
+    --no-scripts \
+    --optimize-autoloader
+
+COPY . .
+RUN composer dump-autoload --no-dev --classmap-authoritative
+
+FROM dunglas/frankenphp:php8.3-bookworm
+
+ENV APP_ENV=production \
+    APP_DEBUG=false \
+    LOG_CHANNEL=stderr \
+    LOG_LEVEL=warning \
+    SESSION_DRIVER=database \
+    CACHE_STORE=array \
+    QUEUE_CONNECTION=sync \
+    FILESYSTEM_DISK=local \
+    LARAVEL_STORAGE_PATH=/tmp/hirehub-storage \
+    VIEW_COMPILED_PATH=/tmp/hirehub-storage/framework/views
+
+RUN install-php-extensions \
+    bcmath \
+    gd \
+    intl \
+    opcache \
+    pdo_mysql \
+    zip
+
+WORKDIR /app
+COPY --from=vendor /app /app
+COPY Caddyfile /etc/caddy/Caddyfile
+COPY docker/vercel-start.sh /usr/local/bin/vercel-start
+
+RUN chmod +x /usr/local/bin/vercel-start \
+    && mkdir -p bootstrap/cache \
+    && APP_KEY='base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' php artisan package:discover --ansi
+
+EXPOSE 80
+
+CMD ["vercel-start"]
